@@ -1,18 +1,10 @@
 use std::collections::HashMap;
 
+use roxmltree::Document;
 use serde::Serialize;
 
 mod xml_iterator;
-
-trait NodeExt {
-    fn iter(&self) -> xml_iterator::XmlIterator;
-}
-
-impl<'a> NodeExt for roxmltree::Node<'a, 'a> {
-    fn iter(&self) -> xml_iterator::XmlIterator<'a> {
-        xml_iterator::XmlIterator::new(self)
-    }
-}
+use xml_iterator::NodeExt;
 
 #[derive(Debug, Serialize)]
 pub struct NodePosition {
@@ -30,36 +22,36 @@ pub struct Corridor {
     pub shelves: Vec<NodePosition>,
 }
 
-pub fn parse_shelves(raw_xml: &str) -> anyhow::Result<HashMap<String, Corridor>> {
-    let xml = roxmltree::Document::parse(raw_xml)?;
-
-    let root = xml.root();
-    let mut hash_map = root
+pub fn parse_shelves(xml: &Document) -> anyhow::Result<HashMap<String, Corridor>> {
+    let mut hash_map = xml
+        .root()
         .iter()
-        .filter(|n| {
+        .filter(|(n, _)| {
             n.tag_name().name() == "circle"
                 && n.attributes()
                     .any(|attr| attr.name() == "is-position" && attr.value() == "true")
         })
-        .map(|node| -> anyhow::Result<NodePosition> {
-            let position_name = node
-                .attributes()
-                .find(|attr| attr.name() == "label")
-                .unwrap()
-                .value();
+        .map(
+            |(node, (offset_x, offset_y))| -> anyhow::Result<NodePosition> {
+                let position_name = node
+                    .attributes()
+                    .find(|attr| attr.name() == "label")
+                    .unwrap()
+                    .value();
 
-            let mut split = position_name.split('-');
-            let corridor_name = split.next().unwrap().to_string();
-            let shelf_name = split.next().unwrap().to_string();
-            let x = node.attribute("cx").unwrap().parse()?;
-            let y = node.attribute("cy").unwrap().parse()?;
-            Ok(NodePosition {
-                corridor_name,
-                shelf_name,
-                x,
-                y,
-            })
-        })
+                let mut split = position_name.split('-');
+                let corridor_name = split.next().unwrap().to_string();
+                let shelf_name = split.next().unwrap().to_string();
+                let x = node.attribute("cx").unwrap().parse::<f64>()? + offset_x;
+                let y = node.attribute("cy").unwrap().parse::<f64>()? + offset_y;
+                Ok(NodePosition {
+                    corridor_name,
+                    shelf_name,
+                    x,
+                    y,
+                })
+            },
+        )
         .collect::<anyhow::Result<Vec<NodePosition>>>()?
         .into_iter()
         .fold(HashMap::<String, Corridor>::new(), |mut map, position| {
