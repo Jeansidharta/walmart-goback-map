@@ -12,5 +12,6 @@ regex = "1.10.2"
 roxmltree = "0.19.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
+svg-path-parser = { git = "https://github.com/Jeansidharta/svg-path-parser", branch = "fix/scientific-notation-support" }
 thiserror = "1.0.51"
 time = "0.3.31"
