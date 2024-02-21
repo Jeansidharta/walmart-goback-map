@@ -1,13 +1,71 @@
+use std::f64::consts::PI;
+
 use roxmltree::{Children, Node};
+use svgtypes::{TransformListParser, TransformListToken};
+
+use crate::vec2::Vec2;
 
 pub struct XmlIterator<'a> {
     descendants: Children<'a, 'a>,
     sub_iter: Option<Box<XmlIterator<'a>>>,
-    offset: (f64, f64),
+    transforms: TransformList,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TransformList {
+    transforms: Vec<TransformListToken>,
+}
+
+impl TransformList {
+    pub fn from(transforms: Vec<TransformListToken>) -> Self {
+        TransformList { transforms }
+    }
+
+    pub fn apply(&self, vec: Vec2) -> Vec2 {
+        self.transforms
+            .iter()
+            .rev()
+            .fold(vec, |Vec2 { x, y }, transform| match transform {
+                TransformListToken::Translate { tx, ty } => Vec2 {
+                    x: x + tx,
+                    y: y + ty,
+                },
+                TransformListToken::Matrix { a, b, c, d, e, f } => Vec2 {
+                    x: x * a + y * c + e,
+                    y: x * b + y * d + f,
+                },
+                TransformListToken::Scale { sx, sy } => Vec2 {
+                    x: x * sx,
+                    y: y * sy,
+                },
+                TransformListToken::Rotate { angle } => {
+                    let angle = angle * PI / 180.0;
+                    let cos = angle.cos();
+                    let sin = angle.sin();
+                    Vec2 {
+                        x: x * cos - y * sin,
+                        y: x * sin + y * cos,
+                    }
+                }
+                TransformListToken::SkewX { angle } => Vec2 {
+                    x: x + y * (angle * PI / 180.0).tan(),
+                    y,
+                },
+                TransformListToken::SkewY { angle } => Vec2 {
+                    x,
+                    y: x * (angle * PI / 180.0).tan() + y,
+                },
+            })
+    }
+
+    pub fn append(&mut self, list: &mut TransformList) -> &mut Self {
+        self.transforms.append(&mut list.transforms);
+        self
+    }
 }
 
 impl<'a> Iterator for XmlIterator<'a> {
-    type Item = (Node<'a, 'a>, (f64, f64));
+    type Item = (Node<'a, 'a>, TransformList);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(sub_iter) = self.sub_iter.as_mut() {
@@ -18,35 +76,25 @@ impl<'a> Iterator for XmlIterator<'a> {
         }
 
         if let Some(next_node) = self.descendants.next() {
-            let offset = next_node
+            let mut new_transforms = next_node
                 .attribute("transform")
-                .and_then(|t| {
-                    regex::Regex::new(
-                        r"translate\(\s*(-?(?:\d+(?:\.\d+)?(?:e-?\d+)?))\s*(?:,\s*(-?(?:\d+(?:\.\d+)?(?:e-?\d+)?))\s*)?\)",
+                .map(|t| {
+                    TransformList::from(
+                        TransformListParser::from(t)
+                            .filter_map(|t| t.ok())
+                            .collect::<Vec<TransformListToken>>(),
                     )
-                    .unwrap()
-                    .captures(t)
                 })
-                .map(|h| {
-                    let mut iter = h.iter();
-                    iter.next().unwrap().unwrap();
-                    let first_num: f64 = iter.next().unwrap().unwrap().as_str().parse().unwrap();
-                    let second_num: f64 = iter
-                        .next()
-                        .unwrap()
-                        .map(|s| s.as_str())
-                        .unwrap_or("0.0")
-                        .parse()
-                        .unwrap();
-                    (first_num + self.offset.0, second_num + self.offset.1)
-                })
-                .unwrap_or(self.offset);
+                .unwrap_or_default();
+            let mut transforms = self.transforms.clone();
+            transforms.append(&mut new_transforms);
             self.sub_iter = Some(Box::new(XmlIterator {
                 sub_iter: None,
                 descendants: next_node.children(),
-                offset,
+                transforms: transforms.clone(),
             }));
-            return Some((next_node, offset));
+
+            return Some((next_node, transforms));
         }
 
         None
@@ -59,7 +107,7 @@ impl<'a> XmlIterator<'a> {
         XmlIterator {
             descendants,
             sub_iter: None,
-            offset: (0.0, 0.0),
+            transforms: TransformList::default(),
         }
     }
 }
