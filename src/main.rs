@@ -10,7 +10,7 @@ struct Args {}
 
 fn main() -> Result<(), Box<dyn Error>> {
     Args::parse();
-    let svg_file = include_str!("./plant.svg");
+    let svg_file = include_str!("../plant.svg");
     let xml = roxmltree::Document::parse(svg_file)?;
     println!("Parsing route...");
     let route = xml::route::parse_route(&xml)?;
