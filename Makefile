@@ -1,5 +1,5 @@
 build:
 	cargo run
-	mv positions.json ../front-end/src/assets/positions.json
-	mv route.json ../front-end/src/assets/route.json
-	cp plant.svg ../front-end/src/assets/plant.svg
+	mv positions.json ../walmart-goback-frontend/src/assets/positions.json
+	mv route.json ../walmart-goback-frontend/src/assets/route.json
+	cp plant.svg ../walmart-goback-frontend/src/assets/plant.svg
